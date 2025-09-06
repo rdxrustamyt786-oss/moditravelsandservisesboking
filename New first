@@ -1,0 +1,24 @@
+<?php
+// verify_payment.php
+require_once __DIR__.'/db.php';
+require_once __DIR__.'/config.php';
+header('Content-Type: application/json');
+$data = json_decode(file_get_contents('php://input'), true);
+$request_id = $data['request_id'] ?? null;
+$rp_id = $data['razorpay_payment_id'] ?? '';
+$rp_order_id = $data['razorpay_order_id'] ?? '';
+$rp_sig = $data['razorpay_signature'] ?? '';
+
+if(!$request_id){ http_response_code(400); echo json_encode(['error'=>'Missing']); exit; }
+
+// verify signature: HMAC_SHA256(order_id + "|" + payment_id, RZP_KEY_SECRET)
+$payload = $rp_order_id . '|' . $rp_id;
+$calc = hash_hmac('sha256', $payload, RZP_KEY_SECRET);
+if(!hash_equals($calc, $rp_sig)){
+    http_response_code(400); echo json_encode(['error'=>'Invalid signature']); exit;
+}
+
+// update DB
+$upd = $pdo->prepare("UPDATE requests SET payment_status = 'paid', razorpay_payment_id = ?, razorpay_signature = ? WHERE id = ?");
+$upd->execute([$rp_id, $rp_sig, $request_id]);
+echo json_encode(['ok'=>true]);
